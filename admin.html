@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Admin Panel - Face Attendance</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👑 Admin Panel</h1>
+            <button id="themeToggle" class="theme-btn">🌙</button>
+        </div>
+
+        <div class="admin-login" id="adminLogin">
+            <input type="password" id="adminPassword" placeholder="ປ້ອນລະຫັດຜ່ານ Admin" class="input-field">
+            <button id="loginBtn" class="btn btn-primary">ເຂົ້າສູ່ລະບົບ</button>
+        </div>
+
+        <div id="adminContent" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="register">📝 ລົງທະບຽນພະນັກງານ</button>
+                <button class="tab-btn" data-tab="list">👥 ລາຍຊື່ພະນັກງານ</button>
+                <button class="tab-btn" data-tab="attendance">📊 ບັນທຶກເຂົ້າວຽກ</button>
+            </div>
+
+            <!-- Tab ລົງທະບຽນ -->
+            <div id="registerTab" class="tab-content active">
+                <div class="form-group">
+                    <input type="text" id="empName" placeholder="ຊື່-ນາມສະກຸນ" class="input-field">
+                    <input type="text" id="empId" placeholder="ລະຫັດພະນັກງານ" class="input-field">
+                    <input type="text" id="empPosition" placeholder="ຕຳແໜ່ງ" class="input-field">
+                </div>
+
+                <div class="video-container-small">
+                    <video id="registerVideo" autoplay playsinline muted></video>
+                    <canvas id="registerOverlay"></canvas>
+                </div>
+
+                <div class="button-group">
+                    <button id="captureBtn" class="btn btn-primary" disabled>📸 ຖ່າຍຮູບໃບໜ້າ</button>
+                    <button id="registerBtn" class="btn btn-success" disabled>💾 ບັນທຶກຂໍ້ມູນ (ຕ້ອງການ 3 ຮູບ)</button>
+                </div>
+
+                <div id="captureCount" class="capture-count">ຖ່າຍຮູບແລ້ວ: 0/3</div>
+                <div id="registerMessage" class="message"></div>
+            </div>
+
+            <!-- Tab ລາຍຊື່ພະນັກງານ -->
+            <div id="listTab" class="tab-content">
+                <div id="employeeList" class="employee-list"></div>
+            </div>
+
+            <!-- Tab ບັນທຶກເຂົ້າວຽກ -->
+            <div id="attendanceTab" class="tab-content">
+                <div class="filter-group">
+                    <input type="date" id="filterDate" class="input-field">
+                    <button id="filterBtn" class="btn btn-secondary">🔍 ຄົ້ນຫາ</button>
+                </div>
+                <div id="attendanceRecords" class="attendance-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="config.js"></script>
+    <script src="face-recognition.js"></script>
+    <script>
+        // Admin page specific logic
+        let capturedDescriptors = [];
+        let currentStream = null;
+        let isAdminLoggedIn = false;
+
+        async function initAdminCamera() {
+            const video = document.getElementById('registerVideo');
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = currentStream;
+                await loadModels();
+                document.getElementById('captureBtn').disabled = false;
+            } catch (error) {
+                showRegisterMessage('❌ ເປີດກ້ອງບໍ່ສຳເລັດ: ' + error.message, 'error');
+            }
+        }
+
+        async function captureFace() {
+            const video = document.getElementById('registerVideo');
+            const canvas = document.getElementById('registerOverlay');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptor();
+
+            if (detection) {
+                const descriptor = Array.from(detection.descriptor);
+                capturedDescriptors.push(descriptor);
+                updateCaptureCount();
+                
+                // Draw rectangle on canvas
+                const box = detection.detection.box;
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(box.x, box.y, box.width, box.height);
+                
+                if (capturedDescriptors.length === 3) {
+                    document.getElementById('registerBtn').disabled = false;
+                    showRegisterMessage('✅ ຖ່າຍຮູບຄົບ 3 ຮູບ, ພ້ອມບັນທຶກ', 'success');
+                } else {
+                    showRegisterMessage(`📸 ຖ່າຍຮູບທີ່ ${capturedDescriptors.length} ສຳເລັດ`, 'info');
+                }
+            } else {
+                showRegisterMessage('❌ ບໍ່ພົບໃບໜ້າ, ລອງໃໝ່ອີກຄັ້ງ', 'error');
+            }
+        }
+
+        async function registerEmployee() {
+            const name = document.getElementById('empName').value;
+            const id = document.getElementById('empId').value;
+            const position = document.getElementById('empPosition').value;
+
+            if (!name || !id || !position) {
+                showRegisterMessage('❌ ກະລຸນາປ້ອນຂໍ້ມູນໃຫ້ຄົບ', 'error');
+                return;
+            }
+
+            if (capturedDescriptors.length !== 3) {
+                showRegisterMessage('❌ ກະລຸນາຖ່າຍຮູບໃບໜ້າ 3 ຮູບກ່ອນ', 'error');
+                return;
+            }
+
+            // Average the 3 descriptors for better accuracy
+            const avgDescriptor = capturedDescriptors[0].map((_, i) => 
+                (capturedDescriptors[0][i] + capturedDescriptors[1][i] + capturedDescriptors[2][i]) / 3
+            );
+
+            const employeeData = {
+                action: 'register',
+                password: document.getElementById('adminPassword').value,
+                employee: {
+                    id: id,
+                    name: name,
+                    position: position,
+                    descriptor: avgDescriptor,
+                    registeredAt: new Date().toISOString()
+                }
+            };
+
+            try {
+                const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(employeeData)
+                });
+
+                showRegisterMessage('✅ ລົງທະບຽນພະນັກງານສຳເລັດ!', 'success');
+                capturedDescriptors = [];
+                updateCaptureCount();
+                document.getElementById('empName').value = '';
+                document.getElementById('empId').value = '';
+                document.getElementById('empPosition').value = '';
+                document.getElementById('registerBtn').disabled = true;
+            } catch (error) {
+                showRegisterMessage('❌ ບັນທຶກບໍ່ສຳເລັດ: ' + error.message, 'error');
+            }
+        }
+
+        function updateCaptureCount() {
+            document.getElementById('captureCount').innerHTML = `ຖ່າຍຮູບແລ້ວ: ${capturedDescriptors.length}/3`;
+        }
+
+        function showRegisterMessage(msg, type) {
+            const el = document.getElementById('registerMessage');
+            el.textContent = msg;
+            el.className = `message ${type}`;
+            setTimeout(() => {
+                el.textContent = '';
+                el.className = 'message';
+            }, 3000);
+        }
+
+        // Event listeners
+        document.getElementById('loginBtn').onclick = () => {
+            const pwd = document.getElementById('adminPassword').value;
+            if (pwd === CONFIG.ADMIN_PASSWORD) {
+                isAdminLoggedIn = true;
+                document.getElementById('adminLogin').style.display = 'none';
+                document.getElementById('adminContent').style.display = 'block';
+                initAdminCamera();
+                loadEmployeeList();
+                loadAttendanceRecords();
+            } else {
+                alert('ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ');
+            }
+        };
+
+        document.getElementById('captureBtn').onclick = captureFace;
+        document.getElementById('registerBtn').onclick = registerEmployee;
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
+                if (btn.dataset.tab === 'list') loadEmployeeList();
+                if (btn.dataset.tab === 'attendance') loadAttendanceRecords();
+            };
+        });
+
+        async function loadEmployeeList() {
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getEmployees&password=${document.getElementById('adminPassword').value}`);
+                const employees = await response.json();
+                const container = document.getElementById('employeeList');
+                container.innerHTML = employees.map(emp => `
+                    <div class="employee-card">
+                        <h3>${emp.name}</h3>
+                        <p>ID: ${emp.id}</p>
+                        <p>ຕຳແໜ່ງ: ${emp.position}</p>
+                        <p>ລົງທະບຽນ: ${new Date(emp.registeredAt).toLocaleDateString('lo-LA')}</p>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading employees:', error);
+            }
+        }
+
+        async function loadAttendanceRecords() {
+            const date = document.getElementById('filterDate').value || new Date().toISOString().split('T')[0];
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getAttendance&date=${date}&password=${document.getElementById('adminPassword').value}`);
+                const records = await response.json();
+                const container = document.getElementById('attendanceRecords');
+                container.innerHTML = records.map(rec => `
+                    <div class="attendance-card">
+                        <strong>${rec.name}</strong> (${rec.id})
+                        <br>✅ ເຂົ້າວຽກ: ${rec.checkin || '-'}
+                        <br>🏠 ອອກວຽກ: ${rec.checkout || '-'}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading attendance:', error);
+            }
+        }
+
+        document.getElementById('filterBtn').onclick = loadAttendanceRecords;
+    </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Face Attendance - ສະແກນໃບໜ້າເຂົ້າວຽກ</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👁️ ລະບົບສະແກນໃບໜ້າເຂົ້າວຽກ</h1>
+            <button id="themeToggle" class="theme-btn">🌙</button>
+        </div>
+
+        <div class="status-card" id="statusCard">
+            <div id="cameraStatus">📷 ກຳລັງກຽມກ້ອງ...</div>
+            <div id="gpsStatus">📍 ກຳລັງຂໍອນຸຍາດ GPS...</div>
+            <div id="modelStatus">🧠 ກຳລັງໂຫຼດ AI Model...</div>
+        </div>
+
+        <div class="video-container">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+        </div>
+
+        <div class="attendance-info" id="attendanceInfo">
+            <div id="currentTime"></div>
+            <div id="locationStatus"></div>
+            <div id="faceMatchResult"></div>
+        </div>
+
+        <div class="button-group">
+            <button id="startCameraBtn" class="btn btn-primary">📸 ເປີດກ້ອງ</button>
+            <button id="checkinBtn" class="btn btn-success" disabled>✅ ເຂົ້າວຽກ</button>
+            <button id="checkoutBtn" class="btn btn-warning" disabled>🏠 ອອກວຽກ</button>
+        </div>
+
+        <div class="message" id="message"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="config.js"></script>
+    <script src="face-recognition.js"></script>
+</body>
+</html>
